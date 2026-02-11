@@ -24,54 +24,68 @@ let activeClients = {};
 
 app.get("/health", (req, res) => res.send("OK"));
 
+// Helper to create client with HTTPS preference
+function createClient(sessionString = "") {
+    return new TelegramClient(new StringSession(sessionString), apiId, apiHash, {
+        connectionRetries: 5,
+        requestRetries: 3,
+        retryDelay: 2000,
+        autoReconnect: true,
+        dc: 2,                    // Force stable HTTPS DC
+        testServers: false
+    });
+}
+
 // 1. Send Code
 app.post("/api/send-code", async (req, res) => {
     try {
         const { phone } = req.body;
-        if (!phone) return res.status(400).json({ error: "Phone required" });
+        if (!phone?.trim()) return res.status(400).json({ error: "Phone required" });
 
-        const client = new TelegramClient(new StringSession(""), apiId, apiHash, {
-            connectionRetries: 5,
-        });
+        const cleanPhone = phone.trim().replace(/\s+/g, '');
+        const client = createClient();
 
         await client.connect();
-        activeClients[phone] = client;
+        activeClients[cleanPhone] = client;
 
-        await client.sendCode({ apiId, apiHash }, phone);
-        res.json({ success: true });
+        await client.sendCode({ apiId, apiHash }, cleanPhone);
+        res.json({ success: true, message: "Code sent" });
     } catch (e) {
-        console.error("Send code error:", e.message);
-        res.status(500).json({ error: e.message });
+        console.error("[send-code error]", e.message);
+        res.status(500).json({ error: e.message || "Failed to send code" });
     }
 });
 
-// 2. Verify
+// 2. Verify & Get Session
 app.post("/api/verify", async (req, res) => {
     try {
         const { phone, code, password } = req.body;
-        if (!phone || !code) return res.status(400).json({ error: "Phone and code required" });
+        if (!phone?.trim() || !code?.trim()) {
+            return res.status(400).json({ error: "Phone and code required" });
+        }
 
-        const client = activeClients[phone];
+        const cleanPhone = phone.trim().replace(/\s+/g, '');
+        const client = activeClients[cleanPhone];
         if (!client) return res.status(400).json({ error: "No active login session" });
 
         await client.start({
-            phoneNumber: async () => phone,
-            phoneCode: async () => code,
-            password: password ? async () => password : undefined,
+            phoneNumber: async () => cleanPhone,
+            phoneCode: async () => code.trim(),
+            password: password?.trim() ? async () => password.trim() : undefined,
             onError: (err) => { throw err; }
         });
 
         const session = client.session.save();
-        delete activeClients[phone];
+        delete activeClients[cleanPhone];
 
         res.json({ success: true, session });
     } catch (e) {
-        console.error("Verify error:", e.message);
-        res.status(500).json({ error: e.message });
+        console.error("[verify error]", e.message);
+        res.status(500).json({ error: e.message || "Login failed" });
     }
 });
 
-// 3. Scrape open supergroups only
+// 3. Scrape ONLY open public supergroups
 app.post("/api/scrape", async (req, res) => {
     res.json({ success: true, message: "Started — searching open supergroups" });
 
@@ -82,9 +96,7 @@ app.post("/api/scrape", async (req, res) => {
         return;
     }
 
-    const client = new TelegramClient(new StringSession(session), apiId, apiHash, {
-        connectionRetries: 5,
-    });
+    const client = createClient(session);
 
     try {
         await client.connect();
@@ -115,11 +127,11 @@ app.post("/api/scrape", async (req, res) => {
                     );
                 } catch (err) {
                     if (err.errorMessage?.includes("FLOOD_WAIT")) {
-                        console.warn(`Flood wait — pausing 20s`);
-                        await new Promise(r => setTimeout(r, 20000));
+                        console.warn(`[flood wait] Pausing 30s for query: ${query}`);
+                        await new Promise(r => setTimeout(r, 30000));
                         continue;
                     }
-                    console.warn(`Search failed for "${query}":`, err.message);
+                    console.warn(`[search failed] "${query}":`, err.message);
                     continue;
                 }
 
@@ -169,15 +181,14 @@ app.post("/api/scrape", async (req, res) => {
         }
 
         io.emit("scrape-complete", { found: count, target });
-        console.log(`Finished — discovered ${count} open supergroups`);
+        console.log(`[scrape done] Discovered ${count} open supergroups`);
     } catch (err) {
-        console.error("Scrape crashed:", err.message);
+        console.error("[scrape crashed]", err.message);
         io.emit("scrape-error", { message: "Crawl failed — " + err.message });
     }
 });
 
-// Listen on Render's assigned port (falls back to 10000 locally)
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT} (Render forced port: ${process.env.PORT || "not set"})`);
+    console.log(`Server running on port ${PORT} (Render assigned: ${process.env.PORT || "not set"})`);
 });
